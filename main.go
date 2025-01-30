@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"time"
@@ -22,6 +23,7 @@ type RingBuffer struct {
 }
 
 func NewRingBuffer(size int) *RingBuffer {
+	log.Println("Создан кольцевой буфер")
 	return &RingBuffer{
 		data: make([]int, size),
 		size: size,
@@ -30,11 +32,13 @@ func NewRingBuffer(size int) *RingBuffer {
 
 func (rb *RingBuffer) Push(value int) bool {
 	if rb.count == rb.size {
+		log.Println("Буфер заполнен, невозможно добавить значение", value)
 		return false
 	}
 	rb.data[rb.tail] = value
 	rb.tail = (rb.tail + 1) % rb.size
 	rb.count++
+	log.Println("Добавлено в буфер:", value)
 	return true
 }
 
@@ -45,6 +49,7 @@ func (rb *RingBuffer) PopAll() []int {
 		rb.head = (rb.head + 1) % rb.size
 		rb.count--
 	}
+	log.Println("Буфер очищен, отправлено значений:", len(result))
 	return result
 }
 
@@ -54,7 +59,10 @@ func filterNegatives(input <-chan int) <-chan int {
 		defer close(output)
 		for value := range input {
 			if value >= 0 {
+				log.Println("Пропущено положительное число:", value)
 				output <- value
+			} else {
+				log.Println("Фильтр отрицательных отсеял:", value)
 			}
 		}
 	}()
@@ -67,7 +75,10 @@ func filterNonMultiplesOfThree(input <-chan int) <-chan int {
 		defer close(output)
 		for value := range input {
 			if value != 0 && value%3 == 0 {
+				log.Println("Пропущено число, кратное 3:", value)
 				output <- value
+			} else {
+				log.Println("Фильтр кратных 3 отсеял:", value)
 			}
 		}
 	}()
@@ -87,6 +98,7 @@ func bufferStage(input <-chan int) <-chan int {
 			select {
 			case value, ok := <-input:
 				if !ok {
+					log.Println("Входной канал закрыт, сбрасываем буфер")
 					for _, bufferedValue := range ringBuffer.PopAll() {
 						output <- bufferedValue
 					}
@@ -95,6 +107,7 @@ func bufferStage(input <-chan int) <-chan int {
 				ringBuffer.Push(value)
 
 			case <-ticker.C:
+				log.Println("Таймер сработал, сбрасываем буфер")
 				for _, bufferedValue := range ringBuffer.PopAll() {
 					output <- bufferedValue
 				}
@@ -113,13 +126,16 @@ func dataSource() <-chan int {
 		for scanner.Scan() {
 			input := scanner.Text()
 			if input == "exit" {
+				log.Println("Получена команда завершения")
 				break
 			}
 			value, err := strconv.Atoi(input)
 			if err != nil {
 				fmt.Println("Некорректное значение, попробуйте снова.")
+				log.Println("Ошибка преобразования строки в число:", input)
 				continue
 			}
+			log.Println("Прочитано значение:", value)
 			output <- value
 		}
 	}()
@@ -128,14 +144,18 @@ func dataSource() <-chan int {
 
 func dataSink(input <-chan int) {
 	for value := range input {
+		log.Println("Получены данные:", value)
 		fmt.Printf("Получены данные: %d\n", value)
 	}
 }
 
 func main() {
+	log.Println("Запуск программы")
 	input := dataSource()
 	filteredNegatives := filterNegatives(input)
 	filteredMultiples := filterNonMultiplesOfThree(filteredNegatives)
 	buffered := bufferStage(filteredMultiples)
 	dataSink(buffered)
+	log.Println("Программа завершена")
 }
+
